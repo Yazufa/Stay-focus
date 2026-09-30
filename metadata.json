@@ -1,0 +1,6 @@
+{
+  "name": "stayfocus",
+  "description": "Aplikasi pengunci fokus pintar dengan quest matematika bertingkat, evaluasi alasan berbasis AI, jadwal kunci fleksibel, mode istirahat, dan perlindungan anti-hapus.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

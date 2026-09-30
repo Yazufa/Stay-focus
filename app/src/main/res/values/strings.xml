@@ -1,0 +1,7 @@
+<resources>
+    <string name="app_name">stayfocus</string>
+    <string name="accessibility_service_desc">Layanan ini diperlukan oleh stayfocus untuk mendeteksi pembukaan aplikasi terlarang secara instan dan menampilkan layar pengunci.</string>
+    <string name="device_admin_description">Fitur Anti-Hapus mengamankan aplikasi dari upaya uninstalasi impulsif saat Anda ingin tetap fokus.</string>
+    <string name="notification_channel_name">Monitor Fokus</string>
+    <string name="notification_channel_desc">Menampilkan status proteksi aktif stayfocus</string>
+</resources>
