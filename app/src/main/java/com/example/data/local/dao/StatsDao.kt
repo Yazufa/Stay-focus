@@ -13,6 +13,9 @@ interface StatsDao {
     @Query("SELECT * FROM app_usage_stats ORDER BY openAttempts DESC")
     fun getAllStats(): Flow<List<AppUsageStat>>
 
+    @Query("SELECT * FROM app_usage_stats ORDER BY openAttempts DESC")
+    suspend fun getAllStatsSync(): List<AppUsageStat>
+
     @Query("SELECT * FROM app_usage_stats WHERE packageName = :packageName")
     suspend fun getStatForPackage(packageName: String): AppUsageStat?
 

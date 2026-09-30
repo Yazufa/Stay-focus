@@ -27,8 +27,12 @@ data class PermissionsState(
     val hasOverlay: Boolean,
     val hasUsageStats: Boolean,
     val hasAccessibility: Boolean,
-    val isDeviceAdmin: Boolean
-)
+    val isDeviceAdmin: Boolean,
+    val isBatteryIgnored: Boolean
+) {
+    val isAllGranted: Boolean
+        get() = hasOverlay && hasUsageStats && hasAccessibility && isDeviceAdmin && isBatteryIgnored
+}
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -70,6 +74,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val restWhitelist: StateFlow<Set<String>> = settingsRepository.restWhitelist
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptySet())
 
+    val simulateAllPermissions: StateFlow<Boolean> = settingsRepository.simulateAllPermissions
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+
+    val simulateDeviceAdmin: StateFlow<Boolean> = settingsRepository.simulateDeviceAdmin
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+
     private val _permissionsState = MutableStateFlow(checkPermissions())
     val permissionsState: StateFlow<PermissionsState> = _permissionsState.asStateFlow()
 
@@ -85,6 +95,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     init {
         loadInstalledApps()
         startLiveTimer()
+        observePermissionSimulations()
+    }
+
+    private fun observePermissionSimulations() {
+        viewModelScope.launch {
+            settingsRepository.simulateAllPermissions.collect {
+                refreshPermissions()
+            }
+        }
+        viewModelScope.launch {
+            settingsRepository.simulateDeviceAdmin.collect {
+                refreshPermissions()
+            }
+        }
     }
 
     private fun startLiveTimer() {
@@ -98,14 +122,34 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun refreshPermissions() {
         _permissionsState.value = checkPermissions()
+        viewModelScope.launch {
+            focusRepository.syncUsageStatsWithSystem()
+        }
+    }
+
+    fun setSimulateAllPermissions(simulate: Boolean) {
+        viewModelScope.launch {
+            settingsRepository.setSimulateAllPermissions(simulate)
+            refreshPermissions()
+        }
+    }
+
+    fun setSimulateDeviceAdmin(simulate: Boolean) {
+        viewModelScope.launch {
+            settingsRepository.setSimulateDeviceAdmin(simulate)
+            refreshPermissions()
+        }
     }
 
     private fun checkPermissions(): PermissionsState {
+        val simAll = simulateAllPermissions.value
+        val simAdmin = simulateDeviceAdmin.value
         return PermissionsState(
-            hasOverlay = PermissionHelper.hasOverlayPermission(context),
-            hasUsageStats = PermissionHelper.hasUsageStatsPermission(context),
-            hasAccessibility = PermissionHelper.hasAccessibilityPermission(context),
-            isDeviceAdmin = PermissionHelper.isDeviceAdminActive(context)
+            hasOverlay = simAll || PermissionHelper.hasOverlayPermission(context),
+            hasUsageStats = simAll || PermissionHelper.hasUsageStatsPermission(context),
+            hasAccessibility = simAll || PermissionHelper.hasAccessibilityPermission(context),
+            isDeviceAdmin = simAll || simAdmin || PermissionHelper.isDeviceAdminActive(context),
+            isBatteryIgnored = simAll || PermissionHelper.isIgnoringBatteryOptimizations(context)
         )
     }
 

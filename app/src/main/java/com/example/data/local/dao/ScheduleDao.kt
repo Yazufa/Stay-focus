@@ -17,6 +17,9 @@ interface ScheduleDao {
     @Query("SELECT * FROM schedules WHERE isEnabled = 1")
     suspend fun getActiveSchedules(): List<Schedule>
 
+    @Query("SELECT * FROM schedules WHERE isEnabled = 1")
+    fun getActiveSchedulesBlocking(): List<Schedule>
+
     @Query("SELECT * FROM schedules WHERE id = :id")
     suspend fun getScheduleById(id: Long): Schedule?
 

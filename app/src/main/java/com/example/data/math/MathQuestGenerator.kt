@@ -5,45 +5,101 @@ import kotlin.random.Random
 data class MathQuestion(
     val id: Int,
     val prompt: String,
-    val options: List<Int>,
     val correctAnswer: Int,
     val level: Int
 )
 
+data class QuestLevelInfo(
+    val level: Int,
+    val name: String,
+    val description: String,
+    val example: String,
+    val pointsBonus: Int
+)
+
 object MathQuestGenerator {
 
+    val LEVELS = listOf(
+        QuestLevelInfo(
+            level = 1,
+            name = "Pemanasan",
+            description = "2 angka satuan (+ / -)",
+            example = "7 + 5 = 12",
+            pointsBonus = 10
+        ),
+        QuestLevelInfo(
+            level = 2,
+            name = "Pemula",
+            description = "2 angka puluhan (+ / -)",
+            example = "47 + 38 = 85",
+            pointsBonus = 20
+        ),
+        QuestLevelInfo(
+            level = 3,
+            name = "Menengah",
+            description = "3 angka puluhan (+ / -)",
+            example = "45 + 23 - 18 = 50",
+            pointsBonus = 35
+        ),
+        QuestLevelInfo(
+            level = 4,
+            name = "Tangguh",
+            description = "(puluhan × puluhan) + puluhan",
+            example = "(12 × 15) + 34 = 214",
+            pointsBonus = 55
+        ),
+        QuestLevelInfo(
+            level = 5,
+            name = "Master",
+            description = "(puluhan × puluhan) + ratusan",
+            example = "(23 × 14) + 250 = 572",
+            pointsBonus = 75
+        ),
+        QuestLevelInfo(
+            level = 6,
+            name = "Legenda",
+            description = "(ratusan × puluhan) + ribuan",
+            example = "(120 × 34) + 1500 = 5580",
+            pointsBonus = 100
+        )
+    )
+
+    fun getLevelInfo(level: Int): QuestLevelInfo {
+        return LEVELS.firstOrNull { it.level == level } ?: LEVELS[0]
+    }
+
     fun generateQuestions(level: Int, count: Int): List<MathQuestion> {
-        val safeLevel = level.coerceIn(1, 5)
+        val safeLevel = level.coerceIn(1, 6)
         val safeCount = count.coerceIn(1, 10)
         return (1..safeCount).map { id ->
             generateSingleQuestion(id, safeLevel)
         }
     }
 
-    private fun generateSingleQuestion(id: Int, level: Int): MathQuestion {
-        val (prompt, answer) = when (level) {
+    fun generateSingleQuestion(id: Int, level: Int): MathQuestion {
+        val safeLevel = level.coerceIn(1, 6)
+        val (prompt, answer) = when (safeLevel) {
             1 -> generateLevel1()
             2 -> generateLevel2()
             3 -> generateLevel3()
             4 -> generateLevel4()
             5 -> generateLevel5()
+            6 -> generateLevel6()
             else -> generateLevel1()
         }
 
-        val options = generateOptions(answer, level)
         return MathQuestion(
             id = id,
             prompt = prompt,
-            options = options,
             correctAnswer = answer,
-            level = level
+            level = safeLevel
         )
     }
 
-    // Level 1: tambah/kurang 1 angka satuan (1..9)
+    // Level 1: Pemanasan - 2 angka satuan, tambah/kurang (hasil non-negatif)
     private fun generateLevel1(): Pair<String, Int> {
         val isAdd = Random.nextBoolean()
-        val a = Random.nextInt(2, 10)
+        val a = Random.nextInt(1, 10)
         val b = Random.nextInt(1, 10)
         return if (isAdd) {
             "$a + $b" to (a + b)
@@ -54,11 +110,11 @@ object MathQuestGenerator {
         }
     }
 
-    // Level 2: tambah/kurang 2 angka puluhan (10..99)
+    // Level 2: Pemula - 2 angka puluhan, tambah/kurang (hasil non-negatif)
     private fun generateLevel2(): Pair<String, Int> {
         val isAdd = Random.nextBoolean()
-        val a = Random.nextInt(12, 90)
-        val b = Random.nextInt(11, 80)
+        val a = Random.nextInt(10, 100)
+        val b = Random.nextInt(10, 100)
         return if (isAdd) {
             "$a + $b" to (a + b)
         } else {
@@ -68,96 +124,61 @@ object MathQuestGenerator {
         }
     }
 
-    // Level 3: tambah/kurang 3 angka
+    // Level 3: Menengah - 3 angka puluhan, tambah/kurang (hasil non-negatif)
     private fun generateLevel3(): Pair<String, Int> {
-        val a = Random.nextInt(15, 60)
-        val b = Random.nextInt(10, 40)
-        val c = Random.nextInt(5, 25)
-        val op1 = if (Random.nextBoolean()) "+" else "-"
-        val op2 = if (Random.nextBoolean()) "+" else "-"
+        val a = Random.nextInt(35, 100)
+        val b = Random.nextInt(10, 80)
+        val isOp1Plus = Random.nextBoolean()
 
-        val step1 = if (op1 == "+") a + b else a - b
-        val finalAnswer = if (op2 == "+") step1 + c else (step1 - c).coerceAtLeast(0)
-        val actualOp2 = if (op2 == "-" && step1 - c < 0) "+" else op2
-        val correctedFinal = if (actualOp2 == "+") step1 + c else step1 - c
-
-        return "$a $op1 $b $actualOp2 $c" to correctedFinal
-    }
-
-    // Level 4: perkalian dasar
-    private fun generateLevel4(): Pair<String, Int> {
-        val isDoubleDigit = Random.nextBoolean()
-        return if (isDoubleDigit) {
-            val a = Random.nextInt(11, 20)
-            val b = Random.nextInt(3, 9)
-            "$a × $b" to (a * b)
+        val (step1, op1) = if (isOp1Plus) {
+            (a + b) to "+"
         } else {
-            val a = Random.nextInt(4, 12)
-            val b = Random.nextInt(4, 12)
-            "$a × $b" to (a * b)
+            val high = maxOf(a, b)
+            val low = minOf(a, b)
+            (high - low) to "-"
         }
+
+        val isOp2Minus = Random.nextBoolean() && step1 >= 25
+        val (op2, cVal) = if (isOp2Minus) {
+            val maxC = minOf(step1 - 1, 99)
+            val c = Random.nextInt(10, maxOf(11, maxC + 1))
+            "-" to c
+        } else {
+            val c = Random.nextInt(10, 100)
+            "+" to c
+        }
+        val finalAnswer = if (op2 == "-") step1 - cVal else step1 + cVal
+
+        val firstA = if (!isOp1Plus) maxOf(a, b) else a
+        val firstB = if (!isOp1Plus) minOf(a, b) else b
+
+        return "$firstA $op1 $firstB $op2 $cVal" to finalAnswer
     }
 
-    // Level 5: campuran + - x : (ekstrem)
+    // Level 4: Tangguh - (puluhan x puluhan) + puluhan. Contoh: (12 x 15) + 34
+    private fun generateLevel4(): Pair<String, Int> {
+        val a = Random.nextInt(11, 26)
+        val b = Random.nextInt(11, 26)
+        val c = Random.nextInt(10, 100)
+        val ans = (a * b) + c
+        return "($a × $b) + $c" to ans
+    }
+
+    // Level 5: Master - (puluhan x puluhan) + ratusan. Contoh: (23 x 14) + 250
     private fun generateLevel5(): Pair<String, Int> {
-        return when (Random.nextInt(3)) {
-            0 -> {
-                // (A × B) - (C ÷ D)
-                val d = Random.nextInt(2, 6)
-                val cMultiplier = Random.nextInt(2, 8)
-                val c = d * cMultiplier
-                val a = Random.nextInt(6, 15)
-                val b = Random.nextInt(3, 8)
-                val ans = (a * b) - (c / d)
-                "($a × $b) - ($c ÷ $d)" to ans
-            }
-            1 -> {
-                // A × B + C - D
-                val a = Random.nextInt(5, 14)
-                val b = Random.nextInt(4, 9)
-                val c = Random.nextInt(10, 40)
-                val d = Random.nextInt(5, 25)
-                val ans = (a * b) + c - d
-                "$a × $b + $c - $d" to ans
-            }
-            else -> {
-                // (A + B) × C - (D ÷ E)
-                val e = Random.nextInt(2, 5)
-                val dMul = Random.nextInt(2, 6)
-                val d = e * dMul
-                val a = Random.nextInt(4, 12)
-                val b = Random.nextInt(3, 9)
-                val c = Random.nextInt(2, 6)
-                val ans = ((a + b) * c) - (d / e)
-                "($a + $b) × $c - ($d ÷ $e)" to ans
-            }
-        }
+        val a = Random.nextInt(12, 35)
+        val b = Random.nextInt(11, 30)
+        val c = Random.nextInt(100, 500)
+        val ans = (a * b) + c
+        return "($a × $b) + $c" to ans
     }
 
-    private fun generateOptions(correctAnswer: Int, level: Int): List<Int> {
-        val options = mutableSetOf(correctAnswer)
-        val maxDelta = when (level) {
-            1 -> 4
-            2 -> 15
-            3 -> 20
-            4 -> 25
-            else -> 40
-        }
-
-        var attempts = 0
-        while (options.size < 4 && attempts < 50) {
-            attempts++
-            val delta = Random.nextInt(1, maxDelta + 1)
-            val fake = if (Random.nextBoolean()) correctAnswer + delta else (correctAnswer - delta)
-            if (fake != correctAnswer) {
-                options.add(fake)
-            }
-        }
-
-        while (options.size < 4) {
-            options.add(correctAnswer + options.size * 3)
-        }
-
-        return options.toList().shuffled()
+    // Level 6: Legenda - (ratusan x puluhan) + ribuan. Contoh: (120 x 34) + 1500
+    private fun generateLevel6(): Pair<String, Int> {
+        val a = Random.nextInt(100, 200)
+        val b = Random.nextInt(12, 35)
+        val c = Random.nextInt(1000, 3500)
+        val ans = (a * b) + c
+        return "($a × $b) + $c" to ans
     }
 }

@@ -35,14 +35,17 @@ class LockScreenViewModel(application: Application) : AndroidViewModel(applicati
     private val _questLevel = MutableStateFlow(1)
     val questLevel: StateFlow<Int> = _questLevel.asStateFlow()
 
+    private val _isAntiUninstallMode = MutableStateFlow(false)
+    val isAntiUninstallMode: StateFlow<Boolean> = _isAntiUninstallMode.asStateFlow()
+
     private val _questions = MutableStateFlow<List<MathQuestion>>(emptyList())
     val questions: StateFlow<List<MathQuestion>> = _questions.asStateFlow()
 
     private val _currentQuestionIndex = MutableStateFlow(0)
     val currentQuestionIndex: StateFlow<Int> = _currentQuestionIndex.asStateFlow()
 
-    private val _selectedAnswer = MutableStateFlow<Int?>(null)
-    val selectedAnswer: StateFlow<Int?> = _selectedAnswer.asStateFlow()
+    private val _enteredAnswer = MutableStateFlow("")
+    val enteredAnswer: StateFlow<String> = _enteredAnswer.asStateFlow()
 
     private val _isAnswerWrong = MutableStateFlow(false)
     val isAnswerWrong: StateFlow<Boolean> = _isAnswerWrong.asStateFlow()
@@ -65,57 +68,86 @@ class LockScreenViewModel(application: Application) : AndroidViewModel(applicati
     private var targetPackageName: String = ""
     private var targetAppName: String = ""
 
-    fun initialize(packageName: String, appName: String, level: Int) {
+    fun initialize(packageName: String, appName: String, level: Int, isAntiUninstall: Boolean = false) {
         targetPackageName = packageName
         targetAppName = appName
-        _questLevel.value = level
+        _questLevel.value = if (isAntiUninstall) 6 else level.coerceIn(1, 6)
+        _isAntiUninstallMode.value = isAntiUninstall
 
         viewModelScope.launch {
-            val qCount = settingsRepository.questionsPerQuest.first()
+            val qCount = if (isAntiUninstall) 3 else settingsRepository.questionsPerQuest.first()
             val bypassLimit = settingsRepository.dailyBypassLimit.first()
             _dailyBypassLimit.value = bypassLimit
 
             val usedBypass = focusRepository.getDailyBypassUsed()
             _dailyBypassUsed.value = usedBypass
 
-            _questions.value = MathQuestGenerator.generateQuestions(level, qCount)
+            _questions.value = MathQuestGenerator.generateQuestions(_questLevel.value, qCount)
             _currentQuestionIndex.value = 0
-            _selectedAnswer.value = null
+            _enteredAnswer.value = ""
+            _isAnswerWrong.value = false
             _questCompleted.value = false
         }
     }
 
-    fun selectAnswer(answer: Int) {
-        _selectedAnswer.value = answer
+    fun appendDigit(digit: String) {
+        if (_enteredAnswer.value.length < 8) {
+            _enteredAnswer.value += digit
+            _isAnswerWrong.value = false
+        }
+    }
+
+    fun deleteDigit() {
+        if (_enteredAnswer.value.isNotEmpty()) {
+            _enteredAnswer.value = _enteredAnswer.value.dropLast(1)
+            _isAnswerWrong.value = false
+        }
+    }
+
+    fun clearDigits() {
+        _enteredAnswer.value = ""
         _isAnswerWrong.value = false
     }
 
-    fun submitAnswer(onAllFinished: () -> Unit) {
+    fun submitAnswer(onResult: (isCorrect: Boolean, isFinished: Boolean) -> Unit) {
         val currentQ = _questions.value.getOrNull(_currentQuestionIndex.value) ?: return
-        val selected = _selectedAnswer.value ?: return
+        val enteredInt = _enteredAnswer.value.toIntOrNull()
 
-        if (selected == currentQ.correctAnswer) {
+        if (enteredInt == currentQ.correctAnswer) {
             _isAnswerWrong.value = false
             if (_currentQuestionIndex.value + 1 < _questions.value.size) {
                 _currentQuestionIndex.value += 1
-                _selectedAnswer.value = null
+                _enteredAnswer.value = ""
+                onResult(true, false)
             } else {
                 // All questions finished!
                 viewModelScope.launch {
-                    val points = focusRepository.recordUnlockSuccess(
-                        packageName = targetPackageName,
-                        appName = targetAppName,
-                        method = "MATH_QUEST",
-                        level = _questLevel.value,
-                        note = "Lolos Quest MTK Level ${_questLevel.value}"
-                    )
-                    _earnedPoints.value = points
+                    if (_isAntiUninstallMode.value) {
+                        focusRepository.startAntiUninstallCountdown()
+                        _earnedPoints.value = 150
+                    } else {
+                        val points = focusRepository.recordUnlockSuccess(
+                            packageName = targetPackageName,
+                            appName = targetAppName,
+                            method = "MATH_QUEST",
+                            level = _questLevel.value,
+                            note = "Lolos Quest MTK Level ${_questLevel.value}"
+                        )
+                        _earnedPoints.value = points
+                    }
                     _questCompleted.value = true
-                    onAllFinished()
+                    onResult(true, true)
                 }
             }
         } else {
+            // Wrong answer! Trigger shake and regenerate a new question for this question index
             _isAnswerWrong.value = true
+            val newQ = MathQuestGenerator.generateSingleQuestion(currentQ.id, _questLevel.value)
+            val updatedList = _questions.value.toMutableList()
+            updatedList[_currentQuestionIndex.value] = newQ
+            _questions.value = updatedList
+            _enteredAnswer.value = ""
+            onResult(false, false)
         }
     }
 

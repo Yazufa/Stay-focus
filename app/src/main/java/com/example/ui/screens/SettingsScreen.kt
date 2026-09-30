@@ -1,6 +1,8 @@
 package com.example.ui.screens
 
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -77,19 +79,17 @@ import com.example.ui.theme.AmberWarning
 import com.example.ui.theme.CardBackgroundDark
 import com.example.ui.theme.CardBorderDark
 import com.example.ui.theme.CyanAccent
-import com.example.ui.theme.EmeraldSuccess
-import com.example.ui.theme.IndigoLight
-import com.example.ui.theme.IndigoPrimary
-import com.example.ui.theme.RoseDanger
-import com.example.ui.theme.Slate200
-import com.example.ui.theme.Slate400
-import com.example.ui.theme.Slate800
-import com.example.ui.theme.Slate900
+import androidx.compose.material.icons.filled.BatterySaver
+import androidx.compose.material.icons.filled.HealthAndSafety
+import androidx.compose.material.icons.filled.Timer
+import com.example.ui.components.DurationWheelPickerDialog
+import com.example.ui.theme.*
 import com.example.util.PermissionHelper
 
 @Composable
 fun SettingsScreen(
-    viewModel: MainViewModel
+    viewModel: MainViewModel,
+    onOpenHealthCheck: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val permissions by viewModel.permissionsState.collectAsState()
@@ -103,9 +103,26 @@ fun SettingsScreen(
     val currentTime by viewModel.currentTimeMillis.collectAsState()
 
     var showWhitelistPicker by remember { mutableStateOf(false) }
+    var showDurationWheel by remember { mutableStateOf(false) }
     var apiKeyInput by remember(customApiKey) { mutableStateOf(customApiKey) }
     var showApiKeyPassword by remember { mutableStateOf(false) }
     var showDeactivationQuestDialog by remember { mutableStateOf(false) }
+
+    val deviceAdminLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) {
+        viewModel.refreshPermissions()
+    }
+
+    val launchDeviceAdminRequest: () -> Unit = {
+        Toast.makeText(context, "Membuka aktivasi Device Admin...", Toast.LENGTH_SHORT).show()
+        try {
+            val intent = PermissionHelper.getDeviceAdminIntent(context)
+            deviceAdminLauncher.launch(intent)
+        } catch (e: Exception) {
+            PermissionHelper.requestDeviceAdmin(context)
+        }
+    }
 
     LazyColumn(
         modifier = Modifier
@@ -179,8 +196,34 @@ fun SettingsScreen(
                         description = "Mencegah aplikasi di-uninstall sembarangan",
                         icon = Icons.Default.AdminPanelSettings,
                         isGranted = permissions.isDeviceAdmin,
-                        onRequest = { PermissionHelper.requestDeviceAdmin(context) }
+                        onRequest = launchDeviceAdminRequest
                     )
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    PermissionRow(
+                        title = "Baterai Tanpa Batasan (Hemat Baterai)",
+                        description = "Agar proses pemantau tidak dibunuh sistem Android",
+                        icon = Icons.Default.BatterySaver,
+                        isGranted = permissions.isBatteryIgnored,
+                        onRequest = { PermissionHelper.requestIgnoreBatteryOptimizations(context) }
+                    )
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    Button(
+                        onClick = onOpenHealthCheck,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(42.dp)
+                            .testTag("open_health_check_button"),
+                        colors = ButtonDefaults.buttonColors(containerColor = IndigoPrimary),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Icon(Icons.Default.HealthAndSafety, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Buka Layar Cek Kesehatan & Panduan Xiaomi", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                    }
                 }
             }
         }
@@ -226,19 +269,42 @@ fun SettingsScreen(
                         modifier = Modifier.testTag("bypass_limit_slider")
                     )
 
-                    Spacer(modifier = Modifier.height(8.dp))
+                    Spacer(modifier = Modifier.height(10.dp))
 
-                    // Durasi Istirahat
-                    Text("Durasi Mode Istirahat: $restDurationMinutes menit", fontWeight = FontWeight.SemiBold, color = Color.White, fontSize = 14.sp)
-                    Slider(
-                        value = restDurationMinutes.toFloat(),
-                        onValueChange = { viewModel.setRestDurationMinutes(it.toInt()) },
-                        valueRange = 5f..60f,
-                        steps = 10,
-                        colors = SliderDefaults.colors(thumbColor = CyanAccent, activeTrackColor = IndigoPrimary)
-                    )
+                    // Durasi Istirahat via Picker Roda Jam & Menit
+                    Text("Durasi Mode Istirahat", fontWeight = FontWeight.SemiBold, color = Color.White, fontSize = 14.sp)
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(Slate900)
+                            .border(1.dp, CardBorderDark, RoundedCornerShape(10.dp))
+                            .clickable { showDurationWheel = true }
+                            .padding(14.dp)
+                            .testTag("rest_duration_picker_box")
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.Timer, contentDescription = null, tint = CyanAccent, modifier = Modifier.size(20.dp))
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Column {
+                                    val hrs = restDurationMinutes / 60
+                                    val mins = restDurationMinutes % 60
+                                    val durLabel = if (hrs > 0) "$hrs Jam $mins Menit" else "$mins Menit"
+                                    Text(durLabel, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                                    Text("Ketuk untuk mengatur roda scroll jam + menit", color = Slate400, fontSize = 11.sp)
+                                }
+                            }
+                            Text("Ubah ➔", color = CyanAccent, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                        }
+                    }
 
-                    Spacer(modifier = Modifier.height(8.dp))
+                    Spacer(modifier = Modifier.height(12.dp))
 
                     OutlinedButton(
                         onClick = { showWhitelistPicker = true },
@@ -332,7 +398,7 @@ fun SettingsScreen(
                     }
                     Spacer(modifier = Modifier.height(6.dp))
                     Text(
-                        "Mencegah pencopotan aplikasi secara impulsif. Untuk menonaktifkan, Anda harus membuktikan komitmen dengan menyelesaikan Quest Matematika Level 5 (Ekstrem) dan menunggu masa jeda aman 24 jam.",
+                        "Mencegah pencopotan aplikasi secara impulsif. Untuk menonaktifkan, Anda harus membuktikan komitmen dengan menyelesaikan Quest Matematika Level 6 (Legenda) dan menunggu masa jeda aman 24 jam.",
                         style = MaterialTheme.typography.bodySmall,
                         color = Slate200
                     )
@@ -341,7 +407,7 @@ fun SettingsScreen(
 
                     if (!permissions.isDeviceAdmin) {
                         Button(
-                            onClick = { PermissionHelper.requestDeviceAdmin(context) },
+                            onClick = launchDeviceAdminRequest,
                             modifier = Modifier.fillMaxWidth().height(46.dp).testTag("enable_device_admin_button"),
                             colors = ButtonDefaults.buttonColors(containerColor = IndigoPrimary),
                             shape = RoundedCornerShape(10.dp)
@@ -456,7 +522,19 @@ fun SettingsScreen(
             onPassed = {
                 viewModel.completeAntiUninstallMathQuest()
                 showDeactivationQuestDialog = false
-                Toast.makeText(context, "Lolos Level 5! Masa jeda 24 jam dimulai.", Toast.LENGTH_LONG).show()
+                Toast.makeText(context, "Lolos Level 6 (Legenda)! Masa jeda 24 jam dimulai.", Toast.LENGTH_LONG).show()
+            }
+        )
+    }
+
+    if (showDurationWheel) {
+        DurationWheelPickerDialog(
+            title = "Pilih Durasi Mode Istirahat",
+            initialTotalMinutes = restDurationMinutes,
+            onDismiss = { showDurationWheel = false },
+            onConfirm = { chosen ->
+                viewModel.setRestDurationMinutes(chosen)
+                showDurationWheel = false
             }
         )
     }
@@ -525,28 +603,30 @@ fun DeactivationMathQuestDialog(
     onDismiss: () -> Unit,
     onPassed: () -> Unit
 ) {
-    val questions = remember { MathQuestGenerator.generateQuestions(level = 5, count = 3) }
+    val questions = remember {
+        mutableStateOf(MathQuestGenerator.generateQuestions(level = 6, count = 3).toMutableList())
+    }
     var currentIndex by remember { mutableIntStateOf(0) }
-    var selectedAnswer by remember { mutableStateOf<Int?>(null) }
+    var enteredAnswer by remember { mutableStateOf("") }
     var isWrong by remember { mutableStateOf(false) }
 
-    val currentQ = questions[currentIndex]
+    val currentQ = questions.value.getOrNull(currentIndex) ?: return
 
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = CardBackgroundDark,
         title = {
-            Text("Verifikasi Quest MTK Level 5 (Ekstrem)", fontWeight = FontWeight.Bold, color = Color.White)
+            Text("Verifikasi Quest MTK Level 6 (Legenda)", fontWeight = FontWeight.Bold, color = Color.White)
         },
         text = {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(
-                    text = "Selesaikan 3 soal campuran Level 5 untuk memulai masa jeda penonaktifan proteksi anti-hapus.",
+                    text = "Selesaikan 3 soal campuran Level 6 (Legenda) untuk memulai masa jeda 24 jam penonaktifan proteksi anti-hapus.",
                     style = MaterialTheme.typography.bodySmall,
                     color = Slate400
                 )
                 Spacer(modifier = Modifier.height(10.dp))
-                Text("Soal ${currentIndex + 1} dari ${questions.size}", fontWeight = FontWeight.Bold, color = CyanAccent)
+                Text("Soal ${currentIndex + 1} dari ${questions.value.size}", fontWeight = FontWeight.Bold, color = CyanAccent)
                 Spacer(modifier = Modifier.height(12.dp))
 
                 Box(
@@ -554,69 +634,119 @@ fun DeactivationMathQuestDialog(
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(12.dp))
                         .background(Slate900)
-                        .padding(18.dp),
+                        .padding(14.dp),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(
-                        text = "${currentQ.prompt} = ?",
-                        fontSize = 24.sp,
-                        fontWeight = FontWeight.Black,
-                        color = Color.White
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(14.dp))
-
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    currentQ.options.chunked(2).forEach { rowOpts ->
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            rowOpts.forEach { opt ->
-                                val isSelected = selectedAnswer == opt
-                                Box(
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .height(48.dp)
-                                        .clip(RoundedCornerShape(10.dp))
-                                        .background(if (isSelected) IndigoPrimary else Slate900)
-                                        .border(1.dp, if (isSelected) CyanAccent else CardBorderDark, RoundedCornerShape(10.dp))
-                                        .clickable {
-                                            selectedAnswer = opt
-                                            isWrong = false
-                                        },
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text(opt.toString(), color = Color.White, fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                                }
-                            }
-                        }
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            text = "${currentQ.prompt} = ?",
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.Black,
+                            color = Color.White
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = if (enteredAnswer.isEmpty()) "Ketik jawaban..." else enteredAnswer,
+                            fontSize = 24.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (enteredAnswer.isEmpty()) Slate400 else CyanAccent
+                        )
                     }
                 }
 
                 if (isWrong) {
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text("Jawaban salah! Coba hitung kembali.", color = RoseDanger, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text("Jawaban salah! Soal diganti baru.", color = RoseDanger, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // Custom Keypad
+                val keypadRows = listOf(
+                    listOf("1", "2", "3"),
+                    listOf("4", "5", "6"),
+                    listOf("7", "8", "9"),
+                    listOf("C", "0", "⌫")
+                )
+
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    keypadRows.forEach { rowKeys ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            rowKeys.forEach { key ->
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(44.dp)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(Slate900)
+                                        .border(1.dp, CardBorderDark, RoundedCornerShape(8.dp))
+                                        .clickable {
+                                            when (key) {
+                                                "C" -> {
+                                                    enteredAnswer = ""
+                                                    isWrong = false
+                                                }
+                                                "⌫" -> {
+                                                    if (enteredAnswer.isNotEmpty()) {
+                                                        enteredAnswer = enteredAnswer.dropLast(1)
+                                                        isWrong = false
+                                                    }
+                                                }
+                                                else -> {
+                                                    if (enteredAnswer.length < 8) {
+                                                        enteredAnswer += key
+                                                        isWrong = false
+                                                    }
+                                                }
+                                            }
+                                        },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = key,
+                                        fontSize = 18.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (key == "C" || key == "⌫") AmberWarning else Color.White
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
             }
         },
         confirmButton = {
             Button(
                 onClick = {
-                    if (selectedAnswer == currentQ.correctAnswer) {
-                        if (currentIndex + 1 < questions.size) {
+                    val parsed = enteredAnswer.toIntOrNull()
+                    if (parsed == currentQ.correctAnswer) {
+                        isWrong = false
+                        if (currentIndex + 1 < questions.value.size) {
                             currentIndex += 1
-                            selectedAnswer = null
-                            isWrong = false
+                            enteredAnswer = ""
                         } else {
                             onPassed()
                         }
                     } else {
                         isWrong = true
+                        enteredAnswer = ""
+                        // Regenerate question
+                        val newQ = MathQuestGenerator.generateSingleQuestion(currentQ.id, 6)
+                        val updated = questions.value.toMutableList()
+                        updated[currentIndex] = newQ
+                        questions.value = updated
                     }
                 },
-                enabled = selectedAnswer != null,
+                enabled = enteredAnswer.isNotEmpty(),
                 colors = ButtonDefaults.buttonColors(containerColor = IndigoPrimary)
             ) {
-                Text(if (currentIndex + 1 < questions.size) "Soal Berikutnya" else "Verifikasi Lolos")
+                Text(if (currentIndex + 1 < questions.value.size) "Lanjut" else "Selesai")
             }
         },
         dismissButton = {

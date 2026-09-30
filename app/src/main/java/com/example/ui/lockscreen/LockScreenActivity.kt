@@ -9,9 +9,9 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
+import androidx.compose.animation.core.keyframes
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -31,7 +31,6 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -39,10 +38,12 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Backspace
 import androidx.compose.material.icons.filled.Calculate
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -69,6 +70,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -81,19 +83,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.ui.theme.CardBackgroundDark
-import com.example.ui.theme.CardBorderDark
-import com.example.ui.theme.CyanAccent
-import com.example.ui.theme.EmeraldSuccess
-import com.example.ui.theme.IndigoPrimary
-import com.example.ui.theme.MyApplicationTheme
-import com.example.ui.theme.RoseDanger
-import com.example.ui.theme.Slate200
-import com.example.ui.theme.Slate400
-import com.example.ui.theme.Slate700
-import com.example.ui.theme.Slate800
-import com.example.ui.theme.Slate900
-import com.example.ui.theme.Slate950
+import com.example.data.math.MathQuestGenerator
+import com.example.ui.theme.*
+import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
 class LockScreenActivity : ComponentActivity() {
@@ -107,14 +99,16 @@ class LockScreenActivity : ComponentActivity() {
         val packageName = intent.getStringExtra(EXTRA_PACKAGE_NAME) ?: ""
         val appName = intent.getStringExtra(EXTRA_APP_NAME) ?: "Aplikasi"
         val questLevel = intent.getIntExtra(EXTRA_QUEST_LEVEL, 1)
+        val isAntiUninstall = intent.getBooleanExtra(EXTRA_IS_ANTI_UNINSTALL, false)
 
-        viewModel.initialize(packageName, appName, questLevel)
+        viewModel.initialize(packageName, appName, questLevel, isAntiUninstall)
 
         setContent {
-            MyApplicationTheme(darkTheme = true) {
+            com.example.ui.theme.MyApplicationTheme(darkTheme = true) {
                 LockScreenContent(
                     appName = appName,
                     viewModel = viewModel,
+                    isAntiUninstall = isAntiUninstall,
                     onGoHome = { navigateToHome() },
                     onUnlockCompleted = { finish() }
                 )
@@ -135,6 +129,7 @@ class LockScreenActivity : ComponentActivity() {
         const val EXTRA_PACKAGE_NAME = "extra_package_name"
         const val EXTRA_APP_NAME = "extra_app_name"
         const val EXTRA_QUEST_LEVEL = "extra_quest_level"
+        const val EXTRA_IS_ANTI_UNINSTALL = "extra_is_anti_uninstall"
     }
 }
 
@@ -142,6 +137,7 @@ class LockScreenActivity : ComponentActivity() {
 fun LockScreenContent(
     appName: String,
     viewModel: LockScreenViewModel,
+    isAntiUninstall: Boolean,
     onGoHome: () -> Unit,
     onUnlockCompleted: () -> Unit
 ) {
@@ -151,7 +147,7 @@ fun LockScreenContent(
     val questLevel by viewModel.questLevel.collectAsState()
     val questions by viewModel.questions.collectAsState()
     val currentQuestionIndex by viewModel.currentQuestionIndex.collectAsState()
-    val selectedAnswer by viewModel.selectedAnswer.collectAsState()
+    val enteredAnswer by viewModel.enteredAnswer.collectAsState()
     val isWrong by viewModel.isAnswerWrong.collectAsState()
     val questCompleted by viewModel.questCompleted.collectAsState()
     val earnedPoints by viewModel.earnedPoints.collectAsState()
@@ -161,6 +157,28 @@ fun LockScreenContent(
     val dailyBypassLimit by viewModel.dailyBypassLimit.collectAsState()
 
     var reasonInput by remember { mutableStateOf("") }
+
+    val shakeOffset = remember { Animatable(0f) }
+    val scope = rememberCoroutineScope()
+
+    LaunchedEffect(isWrong) {
+        if (isWrong) {
+            shakeOffset.animateTo(
+                targetValue = 0f,
+                animationSpec = keyframes {
+                    durationMillis = 350
+                    0f at 0
+                    -25f at 50
+                    25f at 100
+                    -20f at 150
+                    20f at 200
+                    -10f at 250
+                    10f at 300
+                    0f at 350
+                }
+            )
+        }
+    }
 
     Scaffold(
         containerColor = Slate950,
@@ -183,7 +201,10 @@ fun LockScreenContent(
                 ) {
                     Icon(imageVector = Icons.Default.Close, contentDescription = "Tutup")
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("Tutup Aplikasi & Kembali Fokus", fontWeight = FontWeight.SemiBold)
+                    Text(
+                        if (isAntiUninstall) "Tutup & Kembali ke Beranda" else "Tutup Aplikasi & Tetap Fokus",
+                        fontWeight = FontWeight.SemiBold
+                    )
                 }
             }
         }
@@ -193,131 +214,142 @@ fun LockScreenContent(
                 .fillMaxSize()
                 .padding(innerPadding)
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp, vertical = 12.dp),
+                .padding(horizontal = 20.dp, vertical = 8.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             // Lock Hero Header
             Box(
                 modifier = Modifier
-                    .size(68.dp)
+                    .size(64.dp)
                     .clip(CircleShape)
                     .background(
                         Brush.radialGradient(
-                            listOf(IndigoPrimary.copy(alpha = 0.35f), Color.Transparent)
+                            listOf(
+                                (if (isAntiUninstall) RoseDanger else IndigoPrimary).copy(alpha = 0.35f),
+                                Color.Transparent
+                            )
                         )
                     ),
                 contentAlignment = Alignment.Center
             ) {
                 Box(
                     modifier = Modifier
-                        .size(50.dp)
+                        .size(48.dp)
                         .clip(CircleShape)
                         .background(Slate900)
-                        .border(1.5.dp, IndigoPrimary, CircleShape),
+                        .border(1.5.dp, if (isAntiUninstall) RoseDanger else IndigoPrimary, CircleShape),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
-                        imageVector = Icons.Default.Lock,
+                        imageVector = if (isAntiUninstall) Icons.Default.Security else Icons.Default.Lock,
                         contentDescription = "Terkunci",
-                        tint = CyanAccent,
-                        modifier = Modifier.size(26.dp)
+                        tint = if (isAntiUninstall) RoseDanger else CyanAccent,
+                        modifier = Modifier.size(24.dp)
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(8.dp))
             Text(
-                text = "Fokus Terjaga",
+                text = if (isAntiUninstall) "PERLINDUNGAN ANTI-HAPUS" else "Fokus Terjaga",
                 style = MaterialTheme.typography.labelLarge,
-                color = CyanAccent,
+                color = if (isAntiUninstall) RoseDanger else CyanAccent,
                 fontWeight = FontWeight.Bold,
                 letterSpacing = 1.sp
             )
-            Spacer(modifier = Modifier.height(4.dp))
+            Spacer(modifier = Modifier.height(2.dp))
             Text(
                 text = appName,
-                style = MaterialTheme.typography.headlineMedium,
+                style = MaterialTheme.typography.headlineSmall,
                 color = Color.White,
-                fontWeight = FontWeight.ExtraBold
+                fontWeight = FontWeight.ExtraBold,
+                textAlign = TextAlign.Center
             )
             Text(
-                text = "Aplikasi ini dibatasi oleh jadwal fokus Anda.",
+                text = if (isAntiUninstall)
+                    "Akses pengaturan/uninstall dicegah. Selesaikan quest untuk konfirmasi jeda 24 jam."
+                else
+                    "Aplikasi ini dibatasi oleh jadwal fokus Anda.",
                 style = MaterialTheme.typography.bodySmall,
                 color = Slate400,
                 textAlign = TextAlign.Center
             )
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(14.dp))
 
-            // Tab Row
-            TabRow(
-                selectedTabIndex = selectedTabIndex,
-                containerColor = Slate900,
-                contentColor = Color.White,
-                indicator = { tabPositions ->
-                    TabRowDefaults.SecondaryIndicator(
-                        Modifier.tabIndicatorOffset(tabPositions[selectedTabIndex]),
-                        color = IndigoPrimary
+            // Only show AI reason tab if NOT anti-uninstall mode
+            if (!isAntiUninstall) {
+                TabRow(
+                    selectedTabIndex = selectedTabIndex,
+                    containerColor = Slate900,
+                    contentColor = Color.White,
+                    indicator = { tabPositions ->
+                        TabRowDefaults.SecondaryIndicator(
+                            Modifier.tabIndicatorOffset(tabPositions[selectedTabIndex]),
+                            color = IndigoPrimary
+                        )
+                    },
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(12.dp))
+                        .border(1.dp, CardBorderDark, RoundedCornerShape(12.dp))
+                ) {
+                    Tab(
+                        selected = selectedTabIndex == 0,
+                        onClick = { selectedTabIndex = 0 },
+                        text = {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.Calculate, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Quest MTK", fontWeight = FontWeight.Bold)
+                            }
+                        },
+                        modifier = Modifier.testTag("tab_math_quest")
                     )
-                },
-                modifier = Modifier
-                    .clip(RoundedCornerShape(12.dp))
-                    .border(1.dp, CardBorderDark, RoundedCornerShape(12.dp))
-            ) {
-                Tab(
-                    selected = selectedTabIndex == 0,
-                    onClick = { selectedTabIndex = 0 },
-                    text = {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Calculate, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("Quest MTK", fontWeight = FontWeight.Bold)
-                        }
-                    },
-                    modifier = Modifier.testTag("tab_math_quest")
-                )
-                Tab(
-                    selected = selectedTabIndex == 1,
-                    onClick = { selectedTabIndex = 1 },
-                    text = {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("Alasan (AI)", fontWeight = FontWeight.Bold)
-                        }
-                    },
-                    modifier = Modifier.testTag("tab_reason_ai")
-                )
+                    Tab(
+                        selected = selectedTabIndex == 1,
+                        onClick = { selectedTabIndex = 1 },
+                        text = {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Alasan (AI)", fontWeight = FontWeight.Bold)
+                            }
+                        },
+                        modifier = Modifier.testTag("tab_reason_ai")
+                    )
+                }
+                Spacer(modifier = Modifier.height(16.dp))
             }
 
-            Spacer(modifier = Modifier.height(18.dp))
-
-            // TAB 0: MATH QUEST
-            if (selectedTabIndex == 0) {
+            // TAB 0: MATH QUEST (KEYPAD-BASED)
+            if (selectedTabIndex == 0 || isAntiUninstall) {
                 if (questCompleted) {
                     VictoryCard(
                         earnedPoints = earnedPoints,
-                        onUnlock = onUnlockCompleted
+                        isAntiUninstall = isAntiUninstall,
+                        onUnlock = {
+                            if (isAntiUninstall) onGoHome() else onUnlockCompleted()
+                        }
                     )
                 } else if (questions.isNotEmpty()) {
-                    val currentQ = questions[currentQuestionIndex]
-                    val levelLabel = when (questLevel) {
-                        1 -> "Level 1: Tambah/Kurang Satuan"
-                        2 -> "Level 2: Angka Puluhan"
-                        3 -> "Level 3: Hitungan 3 Angka"
-                        4 -> "Level 4: Perkalian Dasar"
-                        else -> "Level 5: Ekstrem (+ - × ÷)"
-                    }
+                    val currentQ = questions.getOrElse(currentQuestionIndex) { questions.first() }
+                    val levelInfo = MathQuestGenerator.getLevelInfo(questLevel)
 
-                    // Quest Card
                     Card(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .offset { IntOffset(shakeOffset.value.roundToInt(), 0) },
                         colors = CardDefaults.cardColors(containerColor = CardBackgroundDark),
-                        border = BorderStroke(1.dp, Brush.linearGradient(listOf(CardBorderDark, IndigoPrimary.copy(alpha = 0.5f)))),
+                        border = BorderStroke(
+                            1.dp,
+                            Brush.linearGradient(
+                                listOf(CardBorderDark, if (isAntiUninstall) RoseDanger.copy(alpha = 0.5f) else IndigoPrimary.copy(alpha = 0.5f))
+                            )
+                        ),
                         shape = RoundedCornerShape(18.dp)
                     ) {
                         Column(
-                            modifier = Modifier.padding(18.dp),
+                            modifier = Modifier.padding(16.dp),
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
                             Row(
@@ -326,10 +358,10 @@ fun LockScreenContent(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(
-                                    text = levelLabel,
+                                    text = "Level ${levelInfo.level}: ${levelInfo.name}",
                                     style = MaterialTheme.typography.labelMedium,
-                                    color = CyanAccent,
-                                    fontWeight = FontWeight.SemiBold
+                                    color = if (isAntiUninstall) RoseDanger else CyanAccent,
+                                    fontWeight = FontWeight.Bold
                                 )
                                 Text(
                                     text = "Soal ${currentQuestionIndex + 1}/${questions.size}",
@@ -339,107 +371,83 @@ fun LockScreenContent(
                                 )
                             }
 
-                            Spacer(modifier = Modifier.height(8.dp))
+                            Spacer(modifier = Modifier.height(6.dp))
                             LinearProgressIndicator(
-                                progress = { (currentQuestionIndex + 1).toFloat() / questions.size.toFloat() },
+                                progress = (currentQuestionIndex + 1).toFloat() / questions.size.toFloat(),
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .height(6.dp)
                                     .clip(RoundedCornerShape(3.dp)),
-                                color = IndigoPrimary,
+                                color = if (isAntiUninstall) RoseDanger else IndigoPrimary,
                                 trackColor = Slate800,
                             )
 
-                            Spacer(modifier = Modifier.height(20.dp))
+                            Spacer(modifier = Modifier.height(14.dp))
 
-                            // Math Expression Box
+                            // Math Question Box
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .clip(RoundedCornerShape(14.dp))
                                     .background(Slate900)
                                     .border(1.dp, CardBorderDark, RoundedCornerShape(14.dp))
-                                    .padding(vertical = 24.dp),
+                                    .padding(vertical = 16.dp),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Text(
                                     text = "${currentQ.prompt} = ?",
-                                    fontSize = 32.sp,
+                                    fontSize = 28.sp,
                                     fontWeight = FontWeight.Black,
                                     color = Color.White,
-                                    letterSpacing = 2.sp
+                                    letterSpacing = 1.sp
                                 )
                             }
 
-                            Spacer(modifier = Modifier.height(18.dp))
-                            Text(
-                                text = "Pilih jawaban dengan mengetuk:",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = Slate400
-                            )
+                            Spacer(modifier = Modifier.height(10.dp))
 
-                            Spacer(modifier = Modifier.height(12.dp))
-
-                            // Options Grid 2x2
-                            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                val chunked = currentQ.options.chunked(2)
-                                chunked.forEach { rowOptions ->
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                                    ) {
-                                        rowOptions.forEach { opt ->
-                                            val isSelected = selectedAnswer == opt
-                                            val bgColor by animateColorAsState(
-                                                targetValue = when {
-                                                    isSelected && isWrong -> RoseDanger.copy(alpha = 0.25f)
-                                                    isSelected -> IndigoPrimary.copy(alpha = 0.35f)
-                                                    else -> Slate900
-                                                },
-                                                label = "bg"
-                                            )
-                                            val borderColor by animateColorAsState(
-                                                targetValue = when {
-                                                    isSelected && isWrong -> RoseDanger
-                                                    isSelected -> IndigoPrimary
-                                                    else -> CardBorderDark
-                                                },
-                                                label = "border"
-                                            )
-
-                                            Box(
-                                                modifier = Modifier
-                                                    .weight(1f)
-                                                    .height(60.dp)
-                                                    .clip(RoundedCornerShape(12.dp))
-                                                    .background(bgColor)
-                                                    .border(1.5.dp, borderColor, RoundedCornerShape(12.dp))
-                                                    .clickable { viewModel.selectAnswer(opt) }
-                                                    .testTag("option_$opt"),
-                                                contentAlignment = Alignment.Center
-                                            ) {
-                                                Text(
-                                                    text = opt.toString(),
-                                                    fontSize = 22.sp,
-                                                    fontWeight = FontWeight.Bold,
-                                                    color = if (isSelected) Color.White else Slate200
-                                                )
-                                            }
-                                        }
-                                    }
+                            // Entered Answer Display Box
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(52.dp)
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(if (isWrong) RoseDanger.copy(alpha = 0.15f) else Slate950)
+                                    .border(
+                                        1.5.dp,
+                                        if (isWrong) RoseDanger else if (enteredAnswer.isNotEmpty()) CyanAccent else Slate800,
+                                        RoundedCornerShape(10.dp)
+                                    )
+                                    .padding(horizontal = 16.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                if (enteredAnswer.isEmpty()) {
+                                    Text(
+                                        text = "Ketik jawaban...",
+                                        fontSize = 18.sp,
+                                        color = Slate700,
+                                        fontWeight = FontWeight.Normal
+                                    )
+                                } else {
+                                    Text(
+                                        text = enteredAnswer,
+                                        fontSize = 26.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.White,
+                                        letterSpacing = 2.sp
+                                    )
                                 }
                             }
 
                             if (isWrong) {
-                                Spacer(modifier = Modifier.height(12.dp))
+                                Spacer(modifier = Modifier.height(6.dp))
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.Center
                                 ) {
-                                    Icon(Icons.Default.Warning, contentDescription = null, tint = RoseDanger, modifier = Modifier.size(16.dp))
-                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Icon(Icons.Default.Warning, contentDescription = null, tint = RoseDanger, modifier = Modifier.size(14.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
                                     Text(
-                                        text = "Jawaban belum tepat, silakan hitung ulang!",
+                                        text = "Jawaban salah! Soal baru diganti otomatis.",
                                         color = RoseDanger,
                                         style = MaterialTheme.typography.bodySmall,
                                         fontWeight = FontWeight.SemiBold
@@ -447,13 +455,26 @@ fun LockScreenContent(
                                 }
                             }
 
-                            Spacer(modifier = Modifier.height(20.dp))
+                            Spacer(modifier = Modifier.height(14.dp))
 
-                            // Interactive Slide to Confirm
+                            // Custom On-Screen Keypad
+                            NumericKeypad(
+                                onDigitClick = { digit -> viewModel.appendDigit(digit) },
+                                onBackspace = { viewModel.deleteDigit() },
+                                onClear = { viewModel.clearDigits() }
+                            )
+
+                            Spacer(modifier = Modifier.height(16.dp))
+
+                            // Interactive Slide to Confirm / Submit
                             SlideToConfirmButton(
-                                isEnabled = selectedAnswer != null,
+                                isEnabled = enteredAnswer.isNotBlank(),
                                 onConfirm = {
-                                    viewModel.submitAnswer(onAllFinished = onUnlockCompleted)
+                                    viewModel.submitAnswer { isCorrect, isFinished ->
+                                        if (isFinished) {
+                                            if (isAntiUninstall) onGoHome() else onUnlockCompleted()
+                                        }
+                                    }
                                 }
                             )
                         }
@@ -462,7 +483,7 @@ fun LockScreenContent(
             }
 
             // TAB 1: REASON (AI JUDGE)
-            if (selectedTabIndex == 1) {
+            if (selectedTabIndex == 1 && !isAntiUninstall) {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(containerColor = CardBackgroundDark),
@@ -473,18 +494,12 @@ fun LockScreenContent(
                         modifier = Modifier.padding(18.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = "Buka dengan Alasan Produktif",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = Color.White
-                            )
-                        }
+                        Text(
+                            text = "Buka dengan Alasan Produktif",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
 
                         Spacer(modifier = Modifier.height(8.dp))
 
@@ -535,7 +550,7 @@ fun LockScreenContent(
                                 .height(120.dp)
                                 .testTag("reason_input_field"),
                             placeholder = {
-                                Text("Contoh: Perlu membalas pesan penting dari dosen pembimbing skripsi mengenai revisi bab 4...", color = Slate400, fontSize = 13.sp)
+                                Text("Contoh: Perlu membalas pesan penting dari dosen/klien mengenai tugas...", color = Slate400, fontSize = 13.sp)
                             },
                             colors = OutlinedTextFieldDefaults.colors(
                                 focusedBorderColor = CyanAccent,
@@ -670,14 +685,81 @@ fun LockScreenContent(
 }
 
 @Composable
+fun NumericKeypad(
+    onDigitClick: (String) -> Unit,
+    onBackspace: () -> Unit,
+    onClear: () -> Unit
+) {
+    val rows = listOf(
+        listOf("1", "2", "3"),
+        listOf("4", "5", "6"),
+        listOf("7", "8", "9"),
+        listOf("C", "0", "⌫")
+    )
+
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        rows.forEach { rowKeys ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                rowKeys.forEach { key ->
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(52.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(
+                                when (key) {
+                                    "C" -> Slate900
+                                    "⌫" -> Slate900
+                                    else -> Slate900
+                                }
+                            )
+                            .border(1.dp, CardBorderDark, RoundedCornerShape(10.dp))
+                            .clickable {
+                                when (key) {
+                                    "C" -> onClear()
+                                    "⌫" -> onBackspace()
+                                    else -> onDigitClick(key)
+                                }
+                            }
+                            .testTag("keypad_$key"),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (key == "⌫") {
+                            Icon(
+                                imageVector = Icons.Default.Backspace,
+                                contentDescription = "Hapus",
+                                tint = RoseDanger,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        } else {
+                            Text(
+                                text = key,
+                                fontSize = if (key == "C") 16.sp else 22.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (key == "C") AmberWarning else Color.White
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
 fun SlideToConfirmButton(
     isEnabled: Boolean,
     onConfirm: () -> Unit
 ) {
-    val trackWidth = 280.dp
     val thumbSize = 52.dp
     var offsetX by remember { mutableFloatStateOf(0f) }
-    val maxPx = 500f // approximate px for slide
+    val maxPx = 450f
 
     val animatedOffset by animateFloatAsState(targetValue = offsetX, label = "offset")
 
@@ -694,9 +776,8 @@ fun SlideToConfirmButton(
             ),
         contentAlignment = Alignment.CenterStart
     ) {
-        // Track text
         Text(
-            text = if (isEnabled) "Geser untuk verifikasi  ➔" else "Pilih jawaban dahulu",
+            text = if (isEnabled) "Geser untuk konfirmasi  ➔" else "Ketik jawaban dahulu",
             style = MaterialTheme.typography.bodyMedium,
             fontWeight = FontWeight.SemiBold,
             color = if (isEnabled) Slate200 else Slate400,
@@ -704,7 +785,6 @@ fun SlideToConfirmButton(
             textAlign = TextAlign.Center
         )
 
-        // Draggable Thumb
         Box(
             modifier = Modifier
                 .offset { IntOffset(animatedOffset.roundToInt(), 0) }
@@ -744,6 +824,7 @@ fun SlideToConfirmButton(
 @Composable
 fun VictoryCard(
     earnedPoints: Int,
+    isAntiUninstall: Boolean,
     onUnlock: () -> Unit
 ) {
     Card(
@@ -775,14 +856,18 @@ fun VictoryCard(
 
             Spacer(modifier = Modifier.height(14.dp))
             Text(
-                text = "Quest MTK Berhasil!",
+                text = if (isAntiUninstall) "Verifikasi Anti-Hapus Lolos!" else "Quest MTK Berhasil!",
                 style = MaterialTheme.typography.headlineSmall,
                 color = Color.White,
-                fontWeight = FontWeight.Bold
+                fontWeight = FontWeight.Bold,
+                textAlign = TextAlign.Center
             )
             Spacer(modifier = Modifier.height(6.dp))
             Text(
-                text = "Kerja bagus! Otak Anda telah teraktivasi. Anda mendapatkan +$earnedPoints poin fokus.",
+                text = if (isAntiUninstall)
+                    "Anda telah menyelesaikan quest level tertinggi. Masa jeda aman 24 jam kini dimulai. Kembali ke Pengaturan untuk memantau waktu jeda."
+                else
+                    "Kerja bagus! Otak Anda telah teraktivasi. Anda mendapatkan +$earnedPoints poin fokus.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = Slate200,
                 textAlign = TextAlign.Center
@@ -798,7 +883,11 @@ fun VictoryCard(
                 colors = ButtonDefaults.buttonColors(containerColor = EmeraldSuccess, contentColor = Color.White),
                 shape = RoundedCornerShape(12.dp)
             ) {
-                Text("Buka Aplikasi Sekarang (15 Menit)", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                Text(
+                    if (isAntiUninstall) "Kembali ke Beranda" else "Buka Aplikasi Sekarang (15 Menit)",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 15.sp
+                )
             }
         }
     }

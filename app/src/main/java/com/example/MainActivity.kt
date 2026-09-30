@@ -5,8 +5,16 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.SizeTransform
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -20,12 +28,14 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.DateRange
+import androidx.compose.material.icons.filled.HealthAndSafety
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -34,8 +44,11 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -49,11 +62,14 @@ import androidx.compose.ui.unit.sp
 import com.example.service.AppMonitorService
 import com.example.ui.MainViewModel
 import com.example.ui.screens.DashboardScreen
+import com.example.ui.screens.HealthCheckDialog
 import com.example.ui.screens.SchedulesScreen
 import com.example.ui.screens.SettingsScreen
 import com.example.ui.screens.StatsScreen
+import com.example.ui.theme.AmberWarning
 import com.example.ui.theme.CardBorderDark
 import com.example.ui.theme.CyanAccent
+import com.example.ui.theme.EmeraldSuccess
 import com.example.ui.theme.IndigoLight
 import com.example.ui.theme.IndigoPrimary
 import com.example.ui.theme.MyApplicationTheme
@@ -89,6 +105,10 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun MainScreen(viewModel: MainViewModel) {
     var selectedTab by rememberSaveable { mutableIntStateOf(0) }
+    var showHealthDialog by remember { mutableStateOf(false) }
+
+    val permissions by viewModel.permissionsState.collectAsState()
+    val allPermissionsHealthy = permissions.isAllGranted
 
     val navItems = listOf(
         NavigationItem("Beranda", Icons.Default.Home, "nav_home"),
@@ -126,6 +146,28 @@ fun MainScreen(viewModel: MainViewModel) {
                             letterSpacing = 1.sp,
                             color = Color.White
                         )
+                    }
+                },
+                actions = {
+                    // Health Check top bar button with live health status
+                    IconButton(
+                        onClick = { showHealthDialog = true },
+                        modifier = Modifier.testTag("health_check_top_button")
+                    ) {
+                        Box(contentAlignment = Alignment.TopEnd) {
+                            Icon(
+                                imageVector = Icons.Default.HealthAndSafety,
+                                contentDescription = "Cek Kesehatan",
+                                tint = if (allPermissionsHealthy) EmeraldSuccess else AmberWarning,
+                                modifier = Modifier.size(24.dp)
+                            )
+                            Box(
+                                modifier = Modifier
+                                    .size(8.dp)
+                                    .clip(CircleShape)
+                                    .background(if (allPermissionsHealthy) EmeraldSuccess else AmberWarning)
+                            )
+                        }
                     }
                 },
                 colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
@@ -177,17 +219,42 @@ fun MainScreen(viewModel: MainViewModel) {
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
-            when (selectedTab) {
-                0 -> DashboardScreen(
-                    viewModel = viewModel,
-                    onNavigateToSettings = { selectedTab = 3 },
-                    onNavigateToSchedules = { selectedTab = 1 }
-                )
-                1 -> SchedulesScreen(viewModel = viewModel)
-                2 -> StatsScreen(viewModel = viewModel)
-                3 -> SettingsScreen(viewModel = viewModel)
+            AnimatedContent(
+                targetState = selectedTab,
+                transitionSpec = {
+                    if (targetState > initialState) {
+                        (slideInHorizontally { width -> width / 3 } + fadeIn()) togetherWith
+                                (slideOutHorizontally { width -> -width / 3 } + fadeOut())
+                    } else {
+                        (slideInHorizontally { width -> -width / 3 } + fadeIn()) togetherWith
+                                (slideOutHorizontally { width -> width / 3 } + fadeOut())
+                    }.using(SizeTransform(clip = false))
+                },
+                label = "tab_switch_transition"
+            ) { targetTab ->
+                when (targetTab) {
+                    0 -> DashboardScreen(
+                        viewModel = viewModel,
+                        onNavigateToSettings = { selectedTab = 3 },
+                        onNavigateToSchedules = { selectedTab = 1 },
+                        onOpenHealthCheck = { showHealthDialog = true }
+                    )
+                    1 -> SchedulesScreen(viewModel = viewModel)
+                    2 -> StatsScreen(viewModel = viewModel)
+                    3 -> SettingsScreen(
+                        viewModel = viewModel,
+                        onOpenHealthCheck = { showHealthDialog = true }
+                    )
+                }
             }
         }
+    }
+
+    if (showHealthDialog) {
+        HealthCheckDialog(
+            viewModel = viewModel,
+            onDismiss = { showHealthDialog = false }
+        )
     }
 }
 

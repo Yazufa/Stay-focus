@@ -25,6 +25,16 @@ class SettingsRepository(private val context: Context) {
         val IS_MASTER_LOCK_ENABLED = booleanPreferencesKey("is_master_lock_enabled")
         val REST_MODE_ACTIVE = booleanPreferencesKey("rest_mode_active")
         val REST_MODE_END_TIMESTAMP = longPreferencesKey("rest_mode_end_timestamp")
+        val SIMULATE_ALL_PERMISSIONS = booleanPreferencesKey("simulate_all_permissions")
+        val SIMULATE_DEVICE_ADMIN = booleanPreferencesKey("simulate_device_admin")
+    }
+
+    val simulateAllPermissions: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[PreferencesKeys.SIMULATE_ALL_PERMISSIONS] ?: false
+    }
+
+    val simulateDeviceAdmin: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[PreferencesKeys.SIMULATE_DEVICE_ADMIN] ?: false
     }
 
     val questionsPerQuest: Flow<Int> = context.dataStore.data.map { preferences ->
@@ -99,6 +109,21 @@ class SettingsRepository(private val context: Context) {
         context.dataStore.edit { preferences ->
             preferences[PreferencesKeys.REST_MODE_ACTIVE] = false
             preferences[PreferencesKeys.REST_MODE_END_TIMESTAMP] = 0L
+        }
+    }
+
+    suspend fun setSimulateAllPermissions(simulate: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.SIMULATE_ALL_PERMISSIONS] = simulate
+            if (simulate) {
+                preferences[PreferencesKeys.SIMULATE_DEVICE_ADMIN] = true
+            }
+        }
+    }
+
+    suspend fun setSimulateDeviceAdmin(simulate: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.SIMULATE_DEVICE_ADMIN] = simulate
         }
     }
 }

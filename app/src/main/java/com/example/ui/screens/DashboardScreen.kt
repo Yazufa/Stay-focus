@@ -67,14 +67,21 @@ import com.example.ui.theme.Slate200
 import com.example.ui.theme.Slate400
 import com.example.ui.theme.Slate800
 import com.example.ui.theme.Slate900
-import com.example.ui.theme.Slate950
+import com.example.ui.components.DurationWheelPickerDialog
+import androidx.compose.material.icons.filled.HealthAndSafety
+import androidx.compose.material.icons.filled.Timer
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import com.example.ui.theme.*
 import com.example.util.PermissionHelper
 
 @Composable
 fun DashboardScreen(
     viewModel: MainViewModel,
     onNavigateToSettings: () -> Unit,
-    onNavigateToSchedules: () -> Unit
+    onNavigateToSchedules: () -> Unit,
+    onOpenHealthCheck: () -> Unit = onNavigateToSettings
 ) {
     val context = LocalContext.current
     val userProgress by viewModel.userProgress.collectAsState()
@@ -86,7 +93,9 @@ fun DashboardScreen(
     val permissions by viewModel.permissionsState.collectAsState()
     val currentTime by viewModel.currentTimeMillis.collectAsState()
 
-    val hasAllPermissions = permissions.hasOverlay && permissions.hasUsageStats && permissions.hasAccessibility
+    var showDurationWheel by remember { mutableStateOf(false) }
+
+    val hasAllPermissions = permissions.isAllGranted
 
     LazyColumn(
         modifier = Modifier
@@ -183,40 +192,72 @@ fun DashboardScreen(
             }
         }
 
-        // Permission Alert if missing
-        if (!hasAllPermissions) {
-            item {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = RoseDanger.copy(alpha = 0.15f)),
-                    border = BorderStroke(1.dp, Brush.horizontalGradient(listOf(RoseDanger, AmberWarning))),
-                    shape = RoundedCornerShape(16.dp)
+        // System Health Status Card
+        item {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onOpenHealthCheck() }
+                    .testTag("health_check_dashboard_card"),
+                colors = CardDefaults.cardColors(
+                    containerColor = if (hasAllPermissions) CardBackgroundDark else RoseDanger.copy(alpha = 0.15f)
+                ),
+                border = if (hasAllPermissions) {
+                    BorderStroke(1.dp, CardBorderDark)
+                } else {
+                    BorderStroke(1.dp, Brush.horizontalGradient(listOf(RoseDanger, AmberWarning)))
+                },
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(14.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Warning, contentDescription = null, tint = RoseDanger)
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("Izin Belum Lengkap", fontWeight = FontWeight.Bold, color = Color.White)
-                        }
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Text(
-                            "Untuk mengunci aplikasi secara instan dan tanpa jeda, stayfocus memerlukan izin Overlay, Usage Access, dan Layanan Aksesibilitas.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = Slate200
-                        )
-                        Spacer(modifier = Modifier.height(10.dp))
-                        Button(
-                            onClick = onNavigateToSettings,
+                    Row(
+                        modifier = Modifier.weight(1f),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
                             modifier = Modifier
-                                .fillMaxWidth()
-                                .height(40.dp)
-                                .testTag("grant_permissions_quick_button"),
-                            colors = ButtonDefaults.buttonColors(containerColor = RoseDanger, contentColor = Color.White),
-                            shape = RoundedCornerShape(8.dp)
+                                .size(40.dp)
+                                .clip(CircleShape)
+                                .background(
+                                    if (hasAllPermissions) EmeraldSuccess.copy(alpha = 0.15f) else RoseDanger.copy(alpha = 0.2f)
+                                ),
+                            contentAlignment = Alignment.Center
                         ) {
-                            Text("Atur Izin Sekarang", fontWeight = FontWeight.Bold)
+                            Icon(
+                                imageVector = Icons.Default.HealthAndSafety,
+                                contentDescription = null,
+                                tint = if (hasAllPermissions) EmeraldSuccess else RoseDanger,
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column {
+                            Text(
+                                text = "Cek Kesehatan Sistem & Izin",
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White,
+                                fontSize = 14.sp
+                            )
+                            Text(
+                                text = if (hasAllPermissions) "Semua izin aktif • Blokir instan siap" else "Perlu tindakan agar blokir instan & anti-hapus aktif",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (hasAllPermissions) Slate400 else AmberWarning
+                            )
                         }
                     }
+
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                        contentDescription = null,
+                        tint = if (hasAllPermissions) Slate400 else RoseDanger,
+                        modifier = Modifier.size(18.dp)
+                    )
                 }
             }
         }
@@ -378,18 +419,34 @@ fun DashboardScreen(
                             Text("Akhiri Istirahat Sekarang", fontWeight = FontWeight.Bold)
                         }
                     } else {
-                        Button(
-                            onClick = { viewModel.toggleRestMode(restDurationMinutes) },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(46.dp)
-                                .testTag("start_rest_button"),
-                            colors = ButtonDefaults.buttonColors(containerColor = CyanAccent, contentColor = Slate950),
-                            shape = RoundedCornerShape(10.dp)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            Icon(Icons.Default.Bedtime, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("Mulai Istirahat ($restDurationMinutes Menit)", fontWeight = FontWeight.Bold)
+                            Button(
+                                onClick = { viewModel.toggleRestMode(restDurationMinutes) },
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(46.dp)
+                                    .testTag("start_rest_button"),
+                                colors = ButtonDefaults.buttonColors(containerColor = CyanAccent, contentColor = Slate950),
+                                shape = RoundedCornerShape(10.dp)
+                            ) {
+                                Icon(Icons.Default.Bedtime, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Mulai ($restDurationMinutes Mnt)", fontWeight = FontWeight.Bold)
+                            }
+
+                            OutlinedButton(
+                                onClick = { showDurationWheel = true },
+                                modifier = Modifier
+                                    .height(46.dp)
+                                    .testTag("change_duration_button"),
+                                shape = RoundedCornerShape(10.dp),
+                                border = BorderStroke(1.dp, CardBorderDark)
+                            ) {
+                                Icon(Icons.Default.Timer, contentDescription = "Ubah Durasi", tint = CyanAccent)
+                            }
                         }
                     }
                 }
@@ -446,5 +503,17 @@ fun DashboardScreen(
         item {
             Spacer(modifier = Modifier.height(20.dp))
         }
+    }
+
+    if (showDurationWheel) {
+        DurationWheelPickerDialog(
+            title = "Atur Durasi Mode Istirahat",
+            initialTotalMinutes = restDurationMinutes,
+            onDismiss = { showDurationWheel = false },
+            onConfirm = { chosen ->
+                viewModel.setRestDurationMinutes(chosen)
+                showDurationWheel = false
+            }
+        )
     }
 }
